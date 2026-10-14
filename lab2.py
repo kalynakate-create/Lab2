@@ -1,9 +1,3 @@
-"""Lab 2: a two-hidden-layer neural network from scratch (NumPy only).
-
-Architecture: 64 -> W -> ReLU -> W -> ReLU -> 10 -> softmax, W in {16, 64}.
-Run:  python lab2.py
-Outputs go to ./results/
-"""
 import time
 from pathlib import Path
 
@@ -20,23 +14,20 @@ WIDTHS = [16, 64]
 LEARNING_RATES = [0.001, 0.01, 0.1]
 EPOCHS = 50
 BATCH_SIZE = 32
-# N(0, 0.01) is ambiguous: std = 0.01 (main runs) or variance = 0.01, i.e. std = 0.1 (supplementary).
 INIT_STD = 0.01
 ALT_STD = 0.1
 
 
-# ---------------------------------------------------------------- 1. Dataset
 def load_data():
     X, y = load_digits(return_X_y=True)
-    X = X / 16.0                      # pixel values 0..16 -> 0..1
-    Y = np.eye(10)[y]                 # one-hot, shape (n, 10)
+    X = X / 16.0
+    Y = np.eye(10)[y]
     X_tr, X_te, Y_tr, Y_te = train_test_split(
         X, Y, test_size=0.3, stratify=y, random_state=42
     )
     return X_tr, X_te, Y_tr, Y_te
 
 
-# ---------------------------------------------------- 2. Network parameters
 def init_params(width, rng, std=INIT_STD):
     return {
         "W1": rng.normal(0.0, std, (64, width)),
@@ -48,19 +39,17 @@ def init_params(width, rng, std=INIT_STD):
     }
 
 
-# ------------------------------------------------------------ 3. Forward pass
 def relu(z):
     return np.maximum(z, 0.0)
 
 
 def softmax(z):
-    z = z - z.max(axis=1, keepdims=True)          # numerical stability
+    z = z - z.max(axis=1, keepdims=True)
     e = np.exp(z)
     return e / e.sum(axis=1, keepdims=True)
 
 
 def forward(params, X):
-    """Returns class probabilities (batch, 10) and a cache for backprop."""
     z1 = X @ params["W1"] + params["b1"]
     a1 = relu(z1)
     z2 = a1 @ params["W2"] + params["b2"]
@@ -71,9 +60,7 @@ def forward(params, X):
     return probs, cache
 
 
-# ------------------------------------------------------ 4. Cross-entropy loss
 def cross_entropy(z3, Y):
-    """Mean cross-entropy computed from logits via log-sum-exp (no log(0))."""
     m = z3.max(axis=1, keepdims=True)
     log_probs = z3 - m - np.log(np.exp(z3 - m).sum(axis=1, keepdims=True))
     return -np.mean(np.sum(Y * log_probs, axis=1))
@@ -84,16 +71,14 @@ def loss_fn(params, X, Y):
     return cross_entropy(cache["z3"], Y)
 
 
-# ----------------------------------------------------------- 5. Backward pass
 def backward(params, cache, Y):
-    """Gradients of the mean cross-entropy w.r.t. every parameter."""
     n = Y.shape[0]
-    dz3 = (cache["probs"] - Y) / n                 # softmax + CE combined
+    dz3 = (cache["probs"] - Y) / n
     dW3 = cache["a2"].T @ dz3
     db3 = dz3.sum(axis=0)
 
     da2 = dz3 @ params["W3"].T
-    dz2 = da2 * (cache["z2"] > 0)                  # ReLU derivative
+    dz2 = da2 * (cache["z2"] > 0)
     dW2 = cache["a1"].T @ dz2
     db2 = dz2.sum(axis=0)
 
@@ -101,16 +86,10 @@ def backward(params, cache, Y):
     dz1 = da1 * (cache["z1"] > 0)
     dW1 = cache["X"].T @ dz1
     db1 = dz1.sum(axis=0)
-    # dX is not needed: the input is not a trainable parameter.
     return {"W1": dW1, "b1": db1, "W2": dW2, "b2": db2, "W3": dW3, "b3": db3}
 
 
 def gradient_check(params, X, Y, rng, n_checks=10, h=1e-5, tol=1e-6, skip_zero=False):
-    """Central differences on 10 random weights (W1, W2, W3).
-
-    skip_zero=True re-draws weights whose analytic gradient is exactly 0
-    (e.g. W1 rows of pixels that are always blank): 0 == 0 proves nothing.
-    """
     _, cache = forward(params, X)
     grads = backward(params, cache, Y)
     rows = []
@@ -125,17 +104,16 @@ def gradient_check(params, X, Y, rng, n_checks=10, h=1e-5, tol=1e-6, skip_zero=F
         loss_plus = loss_fn(params, X, Y)
         params[name][idx] = original - h
         loss_minus = loss_fn(params, X, Y)
-        params[name][idx] = original                # restore
+        params[name][idx] = original
 
         numeric = (loss_plus - loss_minus) / (2 * h)
         analytic = grads[name][idx]
         denom = abs(analytic) + abs(numeric)
-        rel_err = abs(analytic - numeric) / denom if denom > 0 else 0.0  # both exactly 0
+        rel_err = abs(analytic - numeric) / denom if denom > 0 else 0.0
         rows.append((name, idx, analytic, numeric, rel_err, rel_err < tol))
     return rows
 
 
-# --------------------------------------------------------- 6. Training loop
 def accuracy(params, X, Y):
     probs, _ = forward(params, X)
     return np.mean(probs.argmax(axis=1) == Y.argmax(axis=1))
@@ -149,12 +127,12 @@ def train(width, lr, data, std=INIT_STD, seed=0, log=None):
     n = X_tr.shape[0]
 
     for epoch in range(1, EPOCHS + 1):
-        order = rng.permutation(n)                     # shuffle every epoch
+        order = rng.permutation(n)
         for start in range(0, n, BATCH_SIZE):
             batch = order[start:start + BATCH_SIZE]
             _, cache = forward(params, X_tr[batch])
             grads = backward(params, cache, Y_tr[batch])
-            for key in params:                         # plain SGD
+            for key in params:
                 params[key] -= lr * grads[key]
 
         tr_loss = loss_fn(params, X_tr, Y_tr)
@@ -191,7 +169,6 @@ def plot_loss_curves(histories, path, title):
     plt.close(fig)
 
 
-# ------------------------------------------------------------- 7. Timing
 def median_time(fn, runs=100, warmup=5):
     for _ in range(warmup):
         fn()
@@ -204,9 +181,7 @@ def median_time(fn, runs=100, warmup=5):
 
 
 def matmul_flops(n, width):
-    """Multiply-add FLOPs (2 per MAC) of the matrix products in each pass."""
     fwd = 2 * n * (64 * width + width * width + width * 10)
-    # backward: dW for 3 layers (same size as forward) + dA for layers 3 and 2
     bwd = fwd + 2 * n * (width * 10 + width * width)
     return fwd, bwd
 
@@ -227,21 +202,18 @@ def timing(data, rng):
     return rows
 
 
-# ------------------------------------------------------------------ main
 def main():
     RESULTS.mkdir(exist_ok=True)
     data = load_data()
     X_tr, X_te, Y_tr, Y_te = data
     summary = []
 
-    # 1. dataset
     summary.append("== 1. Dataset ==")
     summary.append(f"train X {X_tr.shape}, Y {Y_tr.shape}; test X {X_te.shape}, Y {Y_te.shape}")
     summary.append(f"X range [{X_tr.min():.1f}, {X_tr.max():.1f}]")
     summary.append("train class counts: " + str(Y_tr.sum(axis=0).astype(int).tolist()))
     summary.append("test  class counts: " + str(Y_te.sum(axis=0).astype(int).tolist()))
 
-    # 2-4. shapes, forward pass, untrained loss
     summary.append("\n== 2-4. Shapes, forward pass, untrained loss ==")
     for width in WIDTHS:
         params = init_params(width, np.random.default_rng(0))
@@ -255,7 +227,6 @@ def main():
                        f"-> {'PASS' if probs.shape == (X_tr.shape[0], 10) and row_sum_err < 1e-6 else 'FAIL'}")
         summary.append(f"  untrained loss = {loss0:.4f} (ln 10 = {np.log(10):.4f})")
 
-    # 5. gradient check on one mini-batch of 32 training samples
     X_gc, Y_gc = X_tr[:BATCH_SIZE], Y_tr[:BATCH_SIZE]
     checks = [
         ("5a. GRADED: init std 0.1, 10 random weights with non-zero gradient", ALT_STD, True),
@@ -275,7 +246,6 @@ def main():
                                f"{'ok' if ok else 'FAIL'}")
             summary.append(f"  passed {passed}/10 -> {'PASS' if passed >= 9 else 'FAIL'}")
 
-    # 6. training: spec init (graded) and the std = 0.1 reading (supplementary)
     runs = [
         (INIT_STD, "loss_curves.png", "init N(0, 0.01) as std = 0.01 (spec)"),
         (ALT_STD, "loss_curves_std0.1.png", "init N(0, 0.01) as variance, std = 0.1 (supplementary)"),
@@ -298,7 +268,6 @@ def main():
             summary.append(f"loss curves -> results/{filename}")
     summary.append("per-epoch log -> results/training_log.txt")
 
-    # 7. timing
     summary.append("\n== 7. Timing (median of 100 runs) ==")
     summary.append(f"  {'W':>3} {'batch':>6} {'forward, us':>12} {'backward, us':>13} "
                    f"{'bwd/fwd':>8} {'MFLOP fwd':>10} {'MFLOP bwd':>10}")
